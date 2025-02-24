@@ -5,6 +5,7 @@ const { JWT_SECRET } = require("../config");
 const { User } = require("../db");
 const router = express.Router();
 const bcrypt = require("bcrypt");
+const { authMiddleware } = require("../middleware");
 
 //Sign-Up code
 
@@ -94,5 +95,59 @@ router.post("/signin", async (req, res) => {
   res.status(400).json({
     message: "Error while loggin In",
   });
+});
+
+const updateBody = zod.object({
+  password: zod.string().optional(),
+  firstName: zod.string().optional(),
+  lastName: zod.string().optional(),
+});
+
+router.put("/", authMiddleware, async (req, res) => {
+  const { success } = await updateBody.safeParseAsync(req.body);
+  if (!success) {
+    return res.status(411).json({
+      message: "Error while updating values",
+    });
+  }
+
+  await User.updateOne(
+    {
+      _id: req.userId,
+    },
+    req.body
+  );
+
+  res.json({
+    message: "Updated successfully",
+  });
+});
+
+//GET other users
+
+router.get("/bulk", authMiddleware, async (req, res) => {
+  try {
+    const filter = req.query.filter || "";
+
+    const query = filter
+      ? {
+          $or: [
+            { firstName: { $regex: filter, $options: "i" } },
+            { lastName: { $regex: filter, $options: "i" } },
+          ],
+        }
+      : {}; // If no filter, return all users.
+
+    const users = await User.find(query).select("-password"); //exclude password
+
+    res.status(200).json({
+      message: users.length ? "Related Users found" : " no users found",
+      users,
+    });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Error fetching users", error: error.message });
+  }
 });
 module.exports = router;
